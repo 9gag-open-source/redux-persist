@@ -17,7 +17,6 @@
     "build:umd": "cross-env BABEL_ENV=commonjs webpack",
     "build:umd:min": "cross-env BABEL_ENV=commonjs NODE_ENV=production webpack",
     "build:watch": "npm run build ./src -- -watch",
-    "postinstall": "npm run build:commonjs",
     "prepublish": "npm run clean && npm run build"
   },
   "ava": {
