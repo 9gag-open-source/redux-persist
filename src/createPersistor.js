@@ -1,4 +1,4 @@
-import { KEY_PREFIX, REHYDRATE } from './constants'
+import { KEY_PREFIX, REHYDRATE, PERSISTOR_BATCH_SIZE } from './constants'
 import createAsyncLocalStorage from './defaults/asyncLocalStorage'
 import purgeStoredState from './purgeStoredState'
 import stringify from 'json-stringify-safe'
@@ -12,6 +12,7 @@ export default function createPersistor (store, config) {
   const transforms = config.transforms || []
   const debounce = config.debounce || false
   const keyPrefix = config.keyPrefix !== undefined ? config.keyPrefix : KEY_PREFIX
+  const persistorBatchSize = config.persistor_batch_size || PERSISTOR_BATCH_SIZE
 
   // pluggable state shape (e.g. immutablejs)
   const stateInit = config._stateInit || {}
@@ -31,6 +32,32 @@ export default function createPersistor (store, config) {
   let storesToProcess = []
   let timeIterator = null
 
+  function iterateStoresToProcess () {
+    if (storesToProcess.length === 0) {
+      timeIterator = null
+      return
+    }
+
+    // process stores in batch
+    const batchProcessMaxCountPerIteration = persistorBatchSize
+    let batchProcessedCount = 0
+    while (storesToProcess.length > 0 && batchProcessedCount++ < batchProcessMaxCountPerIteration) {
+      let key = storesToProcess[0]
+      let storageKey = createStorageKey(key)
+      let endState = transforms.reduce((subState, transformer) => transformer.in(subState, key), stateGetter(store.getState(), key))
+      if (typeof endState !== 'undefined') storage.setItem(storageKey, serializer(endState), warnIfSetError(key))
+      storesToProcess.shift()
+
+    }
+
+    // put remaining items into next iteration to avoid blocking JS thread for long
+    if (storesToProcess.length > 0) {
+      timeIterator = setTimeout(iterateStoresToProcess, debounce)
+    } else {
+      timeIterator = null
+    }
+  }
+
   store.subscribe(() => {
     if (paused) return
 
@@ -44,20 +71,8 @@ export default function createPersistor (store, config) {
     })
 
     // time iterator (read: debounce)
-    if (timeIterator === null) {
-      timeIterator = setInterval(() => {
-        if (storesToProcess.length === 0) {
-          clearInterval(timeIterator)
-          timeIterator = null
-          return
-        }
-
-        let key = storesToProcess[0]
-        let storageKey = createStorageKey(key)
-        let endState = transforms.reduce((subState, transformer) => transformer.in(subState, key), stateGetter(store.getState(), key))
-        if (typeof endState !== 'undefined') storage.setItem(storageKey, serializer(endState), warnIfSetError(key))
-        storesToProcess.shift()
-      }, debounce)
+    if (timeIterator === null && storesToProcess.length > 0) {
+      timeIterator = setTimeout(iterateStoresToProcess, debounce)
     }
 
     lastState = state
