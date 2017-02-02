@@ -21,7 +21,6 @@ export default function persistStore (store, config = {}, onComplete) {
   if (shouldRestore) {
     genericSetImmediate(() => {
       getStoredState(config, (err, restoredState) => {
-        console.log('[checking] at local GIT')
         // do not persist state for purgeKeys
         if (purgeKeys) {
           if (purgeKeys === '*') restoredState = {}
