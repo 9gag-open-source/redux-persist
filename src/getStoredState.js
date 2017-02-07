@@ -26,14 +26,26 @@ export default function getStoredState (config, onComplete) {
 
     let restoreCount = keysToRestore.length
     if (restoreCount === 0) complete(null, restoredState)
-    keysToRestore.forEach((key) => {
-      storage.getItem(createStorageKey(key), (err, serialized) => {
-        if (err && process.env.NODE_ENV !== 'production') console.warn('redux-persist/getStoredState: Error restoring data for key:', key, err)
-        else restoredState[key] = rehydrate(key, serialized)
-        completionCount += 1
-        if (completionCount === restoreCount) complete(null, restoredState)
-      })
+
+    const storageKeysToRestore = keysToRestore.map(key => createStorageKey(key))
+
+    // AsyncStorage supports mutiGet https://facebook.github.io/react-native/docs/asyncstorage.html#multiget
+    storage.multiGet(keys, (err, stores) => {
+      if (err && process.env.NODE_ENV !== 'production') {
+        console.warn('redux-persist/getStoredState: Error restoring data:', err)
+      } else {
+        stores.map((result, i, store) => {
+         // get at each store's key/value so you can work with it
+         let key = store[i][0];
+         let serialized = store[i][1];
+
+         restoredState[key] = rehydrate(key, serialized)
+        });
+
+        complete(null, restoredState)
+      }
     })
+    
   })
 
   function rehydrate (key, serialized) {
